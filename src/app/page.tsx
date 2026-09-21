@@ -218,6 +218,38 @@ export default function Home() {
 					</div>
 				</section>
 			</div>
+
+			<section className="mt-8 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+				<div className="mb-1 text-sm font-semibold text-sky-400/90">VaultTrace · MCP server</div>
+				<p className="mb-3 text-xs text-white/50">
+					The same event log is exposed as a Model Context Protocol server, so an agent
+					(or you, in Claude Code) can ask where any item is and what happened to it — in
+					plain English, not SQL. Four read-only tools: <code className="text-white/70">where_is_item</code>,{" "}
+					<code className="text-white/70">item_history</code>, <code className="text-white/70">list_exceptions</code>,{" "}
+					<code className="text-white/70">vault_stats</code>.
+				</p>
+				<pre className="overflow-x-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs leading-relaxed text-white/70">
+{`> where_is_item("Bennett")
+  Bennett Crowe (TC-0009) is held in the QC exception queue (not live).
+  Last ScanGate verdict: FAIL — Card is rotated and off-center in the frame.
+
+> item_history("TC-0005")
+  received → scanned → ScanGate FAILED — label_mismatch`}
+				</pre>
+			</section>
+
+			<footer className="mt-8 border-t border-white/10 pt-4 text-xs text-white/40">
+				Portfolio demo for Alt's Vault founding-engineer role · full source, incl. the
+				ScanGate gate and VaultTrace MCP server, at{" "}
+				<a
+					href="https://github.com/ahonnecke/alt.vault"
+					className="text-white/70 underline hover:text-white"
+					target="_blank"
+					rel="noopener noreferrer"
+				>
+					github.com/ahonnecke/alt.vault
+				</a>
+			</footer>
 		</main>
 	);
 }
