@@ -40,9 +40,20 @@ Built and proven end-to-end (local, $0 mock gate):
   exception queue, chain-of-custody. Screenshot captured; `docs/tile.png` generated.
 - README written. Build green. Postgres on docker host port 5434.
 
-## NEXT
-1. Exercise the real Claude gate once: `export ANTHROPIC_API_KEY=… && npm run seed`
-   (confirms live vision + JSON parse). This is the only unverified claim.
-2. Add the portfolio tile/detail entry in ~/src/portfolio (AI category).  ← in progress
-3. Optional: free-tier deploy (managed Postgres + object storage for scans) for a
-   live demo link.
+## Deployed (2026-09-21)
+- GitHub: https://github.com/ahonnecke/alt.vault (public).
+- Live demo: https://alt-vault-zeta.vercel.app (Vercel, ashton-5237s-projects/alt-vault).
+- DB: Neon free (marketplace, iad1), seeded clean (14 items). Scans in Postgres.
+- Deployed QC gate runs in MOCK mode (SCANGATE_MOCK=1) to stay $0 — verdicts are
+  scripted per defect, NOT real Claude vision.
+- Portfolio tile links to the live demo; pushed to main (DO auto-deploy building).
+
+## NEXT / open decisions
+1. Live QC gate: keep $0 mock, or add ANTHROPIC_API_KEY on Vercel + drop
+   SCANGATE_MOCK to run REAL Claude vision on the live site (pennies). The JD's
+   whole "name the artifact" ask favors real.
+2. Discoverability: dashboard has no link to the repo, and VaultTrace (MCP) — the
+   artifact the JD most rewards — is invisible on the web. Add a repo-link footer +
+   a small VaultTrace/MCP callout.
+3. Real Claude gate still never exercised against the live model (no key used yet).
+4. Resume: tailor `ic` variant to name Alt Vault / VaultTrace / MCP / React Native.
