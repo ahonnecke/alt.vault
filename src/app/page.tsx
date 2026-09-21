@@ -76,7 +76,7 @@ function ItemCard({ item, onOverride }: { item: Item; onOverride: (id: string) =
 				{item.scanPath && (
 					// eslint-disable-next-line @next/next/no-img-element
 					<img
-						src={`/${item.scanPath}`}
+						src={`/api/items/${item.id}/scan-image`}
 						alt={item.title}
 						className="h-24 w-[72px] shrink-0 rounded-md border border-white/10 object-cover"
 					/>

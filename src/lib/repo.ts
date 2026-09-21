@@ -17,6 +17,11 @@ type ItemRow = {
 	last_verdict: Verdict | null; scan_path: string | null; updated_at: string;
 };
 
+// Explicit column list so the heavy `last_scan` bytea never rides along in
+// list/detail reads — it's fetched only by getScanImage.
+const COLS = `id, sku, title, category, manifest, state, received_at,
+	scanned_at, live_at, last_verdict, scan_path, updated_at`;
+
 function toItem(r: ItemRow): Item {
 	return {
 		id: r.id,
@@ -57,7 +62,7 @@ export async function receiveItem(input: {
 	return withTx(async (c) => {
 		const { rows } = await c.query<ItemRow>(
 			`insert into items (sku, title, category, manifest)
-			 values ($1, $2, $3, $4) returning *`,
+			 values ($1, $2, $3, $4) returning ${COLS}`,
 			[input.sku, input.title, input.category, JSON.stringify(input.manifest)],
 		);
 		const item = rows[0];
@@ -79,15 +84,17 @@ export async function recordScan(
 	itemId: string,
 	scanPath: string,
 	verdict: Verdict,
+	scan?: { bytes: Buffer; type: string },
 	actor = "scangate",
 ): Promise<Item> {
 	return withTx(async (c) => {
 		await append(c, itemId, "scanned", { scanPath }, actor);
 		await c.query(
 			`update items set scanned_at = now(), scan_path = $2,
-			 last_verdict = $3, state = 'scanned', updated_at = now()
+			 last_verdict = $3, last_scan = $4, last_scan_type = $5,
+			 state = 'scanned', updated_at = now()
 			 where id = $1`,
-			[itemId, scanPath, JSON.stringify(verdict)],
+			[itemId, scanPath, JSON.stringify(verdict), scan?.bytes ?? null, scan?.type ?? null],
 		);
 
 		if (verdict.pass) {
@@ -107,7 +114,7 @@ export async function recordScan(
 		}
 
 		const { rows } = await c.query<ItemRow>(
-			`select * from items where id = $1`,
+			`select ${COLS} from items where id = $1`,
 			[itemId],
 		);
 		return toItem(rows[0]);
@@ -125,7 +132,7 @@ export async function overrideLive(
 		await append(c, itemId, "went_live", { via: "override" }, actor);
 		const { rows } = await c.query<ItemRow>(
 			`update items set state = 'live', live_at = coalesce(live_at, now()),
-			 updated_at = now() where id = $1 returning *`,
+			 updated_at = now() where id = $1 returning ${COLS}`,
 			[itemId],
 		);
 		return toItem(rows[0]);
@@ -134,7 +141,7 @@ export async function overrideLive(
 
 export async function getItem(itemId: string): Promise<Item | null> {
 	const { rows } = await pool.query<ItemRow>(
-		`select * from items where id = $1`,
+		`select ${COLS} from items where id = $1`,
 		[itemId],
 	);
 	return rows[0] ? toItem(rows[0]) : null;
@@ -143,7 +150,7 @@ export async function getItem(itemId: string): Promise<Item | null> {
 /** Resolve an item by exact id, exact SKU, or a case-insensitive title match. */
 export async function findItem(needle: string): Promise<Item | null> {
 	const { rows } = await pool.query<ItemRow>(
-		`select * from items
+		`select ${COLS} from items
 		 where id::text = $1 or sku ilike $1 or title ilike '%' || $1 || '%'
 		 order by (sku ilike $1) desc, received_at desc
 		 limit 1`,
@@ -155,11 +162,24 @@ export async function findItem(needle: string): Promise<Item | null> {
 export async function listItems(state?: ItemState): Promise<Item[]> {
 	const { rows } = state
 		? await pool.query<ItemRow>(
-				`select * from items where state = $1 order by received_at desc`,
+				`select ${COLS} from items where state = $1 order by received_at desc`,
 				[state],
 			)
-		: await pool.query<ItemRow>(`select * from items order by received_at desc`);
+		: await pool.query<ItemRow>(`select ${COLS} from items order by received_at desc`);
 	return rows.map(toItem);
+}
+
+/** Fetch the stored latest scan image for an item. */
+export async function getScanImage(
+	itemId: string,
+): Promise<{ bytes: Buffer; type: string } | null> {
+	const { rows } = await pool.query<{ last_scan: Buffer | null; last_scan_type: string | null }>(
+		`select last_scan, last_scan_type from items where id = $1`,
+		[itemId],
+	);
+	const r = rows[0];
+	if (!r?.last_scan) return null;
+	return { bytes: r.last_scan, type: r.last_scan_type ?? "image/png" };
 }
 
 export async function getEvents(itemId: string): Promise<VaultEvent[]> {

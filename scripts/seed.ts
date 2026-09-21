@@ -1,15 +1,11 @@
 import { config } from "dotenv";
 config({ path: ".env.local" });
 
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { pool } from "../src/lib/db";
 import type { Manifest } from "../src/lib/domain";
 import { recordScan, receiveItem } from "../src/lib/repo";
 import { scanGate } from "../src/lib/scangate";
 import { renderScan, type Variant } from "../src/lib/cards";
-
-const SCAN_DIR = join(process.cwd(), "public", "scans");
 
 type Seed = {
 	sku: string;
@@ -65,14 +61,11 @@ async function backdate(): Promise<void> {
 async function main(): Promise<void> {
 	const mock = process.env.SCANGATE_MOCK === "1";
 	console.log(`Seeding ${SEEDS.length} items — ScanGate mode: ${mock ? "MOCK ($0)" : "CLAUDE VISION"}`);
-	await mkdir(SCAN_DIR, { recursive: true });
 	await reset();
 
 	for (const s of SEEDS) {
 		const png = await renderScan(s.manifest, s.variant);
-		const file = `${s.sku}__${s.variant}.png`;
-		await writeFile(join(SCAN_DIR, file), png);
-		const scanPath = `scans/${file}`;
+		const scanPath = `${s.sku}__${s.variant}.png`;
 
 		const item = await receiveItem({
 			sku: s.sku,
@@ -81,7 +74,7 @@ async function main(): Promise<void> {
 			manifest: s.manifest,
 		});
 		const verdict = await scanGate(png, "image/png", s.manifest, scanPath);
-		const out = await recordScan(item.id, scanPath, verdict);
+		const out = await recordScan(item.id, scanPath, verdict, { bytes: png, type: "image/png" });
 		console.log(
 			`  ${s.sku.padEnd(9)} ${s.variant.padEnd(9)} -> ${out.state.padEnd(9)} ${verdict.pass ? "PASS" : "FAIL"} (${verdict.issues.map((i) => i.type).join(",") || "clean"})`,
 		);

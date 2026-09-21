@@ -32,3 +32,8 @@ create table if not exists events (
 create index if not exists events_item_idx on events (item_id, seq);
 create index if not exists items_state_idx on items (state);
 create index if not exists items_sku_idx   on items (sku);
+
+-- Latest scan image is stored in the DB (not the filesystem) so the app runs on
+-- read-only serverless hosts and needs no object storage. Served via an API route.
+alter table items add column if not exists last_scan      bytea;
+alter table items add column if not exists last_scan_type text;

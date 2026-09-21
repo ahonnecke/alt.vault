@@ -1,11 +1,7 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { renderScan, type Variant } from "./cards";
 import type { Item, Manifest, Verdict } from "./domain";
 import { recordScan, receiveItem } from "./repo";
 import { scanGate } from "./scangate";
-
-const SCAN_DIR = join(process.cwd(), "public", "scans");
 
 const NAMES = [
 	"Ravi Okafor", "Mika Sorenson", "Diego Salas", "Nora Whitfield",
@@ -31,14 +27,11 @@ export async function simulateIntake(variant?: Variant): Promise<{ item: Item; v
 	};
 	const sku = `TC-${n}`;
 
-	await mkdir(SCAN_DIR, { recursive: true });
 	const png = await renderScan(manifest, v);
-	const file = `${sku}__${v}.png`;
-	await writeFile(join(SCAN_DIR, file), png);
-	const scanPath = `scans/${file}`;
+	const scanPath = `${sku}__${v}.png`;
 
 	const item = await receiveItem({ sku, title: manifest.title, category: "Trading Cards", manifest });
 	const verdict = await scanGate(png, "image/png", manifest, scanPath);
-	const recorded = await recordScan(item.id, scanPath, verdict);
+	const recorded = await recordScan(item.id, scanPath, verdict, { bytes: png, type: "image/png" });
 	return { item: recorded, verdict };
 }
