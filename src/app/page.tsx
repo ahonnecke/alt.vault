@@ -164,14 +164,26 @@ export default function Home() {
 
 	return (
 		<main className="mx-auto max-w-6xl px-4 py-8">
-			<header className="mb-6">
+			<header className="mb-4">
 				<h1 className="text-2xl font-semibold">Alt Vault — intake spine</h1>
 				<p className="mt-1 text-sm text-white/50">
-					Event-sourced vault pipeline. <span className="text-white/70">ScanGate</span> (Claude vision QC)
-					gates every scan against its manifest; <span className="text-white/70">VaultTrace</span> (MCP)
-					answers where any item is and what happened to it. The metric that matters: time from received to live.
+					A working demo of a physical-asset vault pipeline: a collectible arrives, gets
+					photographed, and either goes live for sale or gets held for a bad scan. The whole
+					thing is driven by one number — time from received to live.
 				</p>
 			</header>
+
+			<section className="mb-6 rounded-xl border border-sky-500/20 bg-sky-500/[0.04] p-4 text-sm text-white/70">
+				<div className="mb-1 font-semibold text-sky-300/90">Try it in 10 seconds</div>
+				Hit a <span className="text-white/90">Simulate intake</span> button below. It renders a
+				card scan and runs it through <span className="text-white/90">ScanGate</span> — a Claude
+				vision check against the item&rsquo;s manifest. A clean scan passes QC and moves to{" "}
+				<span className="text-emerald-400">Live inventory</span>; a scan with glare, blur, skew, or
+				a wrong label fails and lands in the{" "}
+				<span className="text-rose-400">Exception queue</span> instead of reaching a customer.
+				Click <span className="text-white/90">chain of custody</span> on any item to see its event
+				log. The metrics up top recompute from that log in real time.
+			</section>
 
 			{metrics && (
 				<section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
