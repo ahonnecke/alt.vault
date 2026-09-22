@@ -14,8 +14,6 @@ type Metrics = {
 	passRate: number | null;
 };
 
-const fmtMin = (n: number | null) => (n == null ? "—" : `${n.toFixed(1)}m`);
-
 const STATE_STYLE: Record<string, string> = {
 	live: "text-emerald-400 border-emerald-500/40 bg-emerald-500/10",
 	exception: "text-rose-400 border-rose-500/40 bg-rose-500/10",
@@ -87,7 +85,8 @@ function ItemCard({ item, onOverride }: { item: Item; onOverride: (id: string) =
 					</div>
 					<div className="truncate font-medium">{item.title}</div>
 					<div className="text-xs text-white/40">
-						manifest: {item.manifest.set} · #{item.manifest.cardNumber} · {item.manifest.year}
+						manifest: {item.manifest.set}
+						{item.manifest.cardNumber && item.manifest.cardNumber !== "n/a" ? ` · #${item.manifest.cardNumber}` : ""} · {item.manifest.year}
 						{item.manifest.grade ? ` · ${item.manifest.grade}` : ""}
 					</div>
 					{v && (
@@ -117,6 +116,66 @@ function ItemCard({ item, onOverride }: { item: Item; onOverride: (id: string) =
 				</div>
 			</div>
 			{open && <div className="border-t border-white/10"><Timeline id={item.id} /></div>}
+		</div>
+	);
+}
+
+function TraceBox() {
+	const [q, setQ] = useState("");
+	const [res, setRes] = useState<{ found: boolean; query?: string; where?: string; events?: string[] } | null>(null);
+	const [loading, setLoading] = useState(false);
+
+	const ask = async (query: string) => {
+		setQ(query);
+		setLoading(true);
+		const r = await fetch(`/api/trace?q=${encodeURIComponent(query)}`).then((x) => x.json());
+		setRes(r);
+		setLoading(false);
+	};
+
+	const suggestions = ["MTG-0003", "MTG-0009", "Crystal Rod", "Wings of Hope"];
+	return (
+		<div>
+			<form
+				onSubmit={(e) => {
+					e.preventDefault();
+					if (q.trim()) ask(q.trim());
+				}}
+				className="flex gap-2"
+			>
+				<input
+					value={q}
+					onChange={(e) => setQ(e.target.value)}
+					placeholder="a SKU, card name, or id…"
+					className="flex-1 rounded-lg border border-white/15 bg-black/30 px-3 py-1.5 text-sm outline-none focus:border-sky-400/50"
+				/>
+				<button type="submit" className="rounded-lg border border-sky-400/40 bg-sky-400/10 px-3 py-1.5 text-sm text-sky-200 hover:bg-sky-400/20">
+					ask
+				</button>
+			</form>
+			<div className="mt-2 flex flex-wrap gap-2">
+				{suggestions.map((s) => (
+					<button
+						key={s}
+						type="button"
+						onClick={() => ask(s)}
+						className="rounded-full border border-white/15 bg-white/[0.03] px-2.5 py-0.5 text-xs text-white/60 hover:bg-white/10"
+					>
+						{s}
+					</button>
+				))}
+			</div>
+			{loading && <div className="mt-3 text-xs text-white/40">querying…</div>}
+			{res && !loading && (
+				res.found ? (
+					<div className="mt-3 space-y-2">
+						<pre className="whitespace-pre-wrap rounded-lg border border-white/10 bg-black/40 p-3 text-xs leading-relaxed text-white/80">{res.where}</pre>
+						<pre className="overflow-x-auto rounded-lg border border-white/10 bg-black/40 p-3 text-[11px] leading-relaxed text-white/50">{res.events?.join("\n")}</pre>
+					</div>
+				) : (
+					<div className="mt-3 text-sm text-white/50">No item matches “{res.query}”.</div>
+				)
+			)}
 		</div>
 	);
 }
@@ -154,8 +213,8 @@ export default function Home() {
 				<h1 className="text-2xl font-semibold">Alt Vault — intake spine</h1>
 				<p className="mt-1 text-sm text-white/50">
 					A working demo of a physical-asset vault pipeline: a collectible arrives, gets
-					photographed, and either goes live for sale or is held for a bad scan. Driven by one
-					number — time from received to live.
+					photographed, and either goes live for sale or is held for a bad scan. The metric a
+					real vault drives down: time from item received to live.
 				</p>
 			</header>
 
@@ -173,13 +232,11 @@ export default function Home() {
 			</section>
 
 			{metrics && (
-				<section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-					<Stat label="Median time-to-live" value={fmtMin(metrics.medianTimeToLiveMin)} sub={`p90 ${fmtMin(metrics.p90TimeToLiveMin)}`} />
-					<Stat label="Avg time-to-live" value={fmtMin(metrics.avgTimeToLiveMin)} />
+				<section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
 					<Stat label="ScanGate pass rate" value={metrics.passRate == null ? "—" : `${Math.round(metrics.passRate * 100)}%`} />
 					<Stat label="Live" value={String(metrics.live)} />
-					<Stat label="Exceptions" value={String(metrics.exception)} />
-					<Stat label="In-flight" value={String(metrics.inFlight)} />
+					<Stat label="Exceptions held" value={String(metrics.exception)} />
+					<Stat label="Total items" value={String(metrics.total)} />
 				</section>
 			)}
 
@@ -201,22 +258,17 @@ export default function Home() {
 			</div>
 
 			<section className="mt-8 rounded-xl border border-white/10 bg-white/[0.02] p-4">
-				<div className="mb-1 text-sm font-semibold text-sky-400/90">VaultTrace · MCP server</div>
+				<div className="mb-1 text-sm font-semibold text-sky-400/90">VaultTrace · ask where an item is</div>
 				<p className="mb-3 text-xs text-white/50">
-					The same event log is exposed as a Model Context Protocol server, so an agent
-					(or you, in Claude Code) can ask where any item is and what happened to it — in
-					plain English, not SQL. Four read-only tools: <code className="text-white/70">where_is_item</code>,{" "}
+					&ldquo;Where is this item and what happened to it&rdquo; — one query over the event log,
+					not a one-off. This box is the <span className="text-white/70">REST door</span>; the same
+					functions are exposed to agents as a <span className="text-white/70">Model Context Protocol
+					server</span> (tools <code className="text-white/70">where_is_item</code>,{" "}
 					<code className="text-white/70">item_history</code>, <code className="text-white/70">list_exceptions</code>,{" "}
-					<code className="text-white/70">vault_stats</code>.
+					<code className="text-white/70">vault_stats</code>) so Claude Code can ask it in plain English.
+					One service, two front doors.
 				</p>
-				<pre className="overflow-x-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs leading-relaxed text-white/70">
-{`> where_is_item("MTG-0003")
-  Crystal Rod (MTG-0003) is held in the QC exception queue (not live).
-  Last ScanGate verdict: FAIL — too blurry to reliably confirm details.
-
-> item_history("MTG-0009")
-  received → scanned → ScanGate FAILED — label_mismatch (photo is Crystal Rod, record says Shivan Dragon)`}
-				</pre>
+				<TraceBox />
 			</section>
 
 			<footer className="mt-8 border-t border-white/10 pt-4 text-xs text-white/40">

@@ -24,9 +24,9 @@ async function main(): Promise<void> {
 
 	await call("vault_stats");
 	await call("list_exceptions");
-	await call("where_is_item", { query: "TC-0001" });
-	await call("item_history", { query: "TC-0005" });
-	await call("where_is_item", { query: "Bennett" });
+	await call("where_is_item", { query: "MTG-0001" });
+	await call("item_history", { query: "MTG-0009" });
+	await call("where_is_item", { query: "Crystal Rod" });
 
 	await client.close();
 	process.exit(0);
