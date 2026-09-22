@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { Item, VaultEvent, Verdict } from "@/lib/domain";
+import type { Item, VaultEvent } from "@/lib/domain";
 
 type Metrics = {
 	total: number;
@@ -13,9 +13,6 @@ type Metrics = {
 	p90TimeToLiveMin: number | null;
 	passRate: number | null;
 };
-
-const VARIANTS = ["random", "clean", "glare", "blur", "rotate", "mismatch"] as const;
-type Variant = (typeof VARIANTS)[number];
 
 const fmtMin = (n: number | null) => (n == null ? "—" : `${n.toFixed(1)}m`);
 
@@ -67,28 +64,18 @@ function Timeline({ id }: { id: string }) {
 	);
 }
 
-function ItemCard({
-	item,
-	onOverride,
-	highlight,
-}: {
-	item: Item;
-	onOverride: (id: string) => void;
-	highlight?: boolean;
-}) {
+function ItemCard({ item, onOverride }: { item: Item; onOverride: (id: string) => void }) {
 	const [open, setOpen] = useState(false);
 	const v = item.lastVerdict;
 	return (
-		<div
-			className={`rounded-xl border bg-white/[0.02] transition ${highlight ? "border-sky-400/70 ring-2 ring-sky-400/40" : "border-white/10"}`}
-		>
+		<div className="rounded-xl border border-white/10 bg-white/[0.02]">
 			<div className="flex gap-3 p-3">
 				{item.scanPath && (
 					// eslint-disable-next-line @next/next/no-img-element
 					<img
 						src={`/api/items/${item.id}/scan-image`}
 						alt={item.title}
-						className="h-24 w-[72px] shrink-0 rounded-md border border-white/10 object-cover"
+						className="h-28 w-[84px] shrink-0 rounded-md border border-white/10 object-cover"
 					/>
 				)}
 				<div className="min-w-0 flex-1">
@@ -97,24 +84,25 @@ function ItemCard({
 						<span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase ${STATE_STYLE[item.state]}`}>
 							{item.state}
 						</span>
-						{highlight && (
-							<span className="rounded-full border border-sky-400/50 bg-sky-400/10 px-2 py-0.5 text-[10px] uppercase text-sky-300">
-								new
-							</span>
-						)}
 					</div>
 					<div className="truncate font-medium">{item.title}</div>
 					<div className="text-xs text-white/40">
-						{item.manifest.set} · #{item.manifest.cardNumber} · {item.manifest.year}
+						manifest: {item.manifest.set} · #{item.manifest.cardNumber} · {item.manifest.year}
 						{item.manifest.grade ? ` · ${item.manifest.grade}` : ""}
 					</div>
-					<div className="font-mono text-[10px] text-white/25">
-						id …{item.id.slice(-6)} · received {new Date(item.receivedAt).toLocaleTimeString()}
-					</div>
 					{v && (
-						<div className={`mt-1 text-xs ${v.pass ? "text-emerald-400/80" : "text-rose-400/90"}`}>
-							{v.pass ? "PASS" : "FAIL"} · {v.summary}
+						<div className={`mt-1 text-xs ${v.pass ? "text-emerald-400/90" : "text-rose-400/90"}`}>
+							{v.pass ? "PASS" : "FAIL"} · {Math.round(v.confidence * 100)}% · {v.summary}
 						</div>
+					)}
+					{v && v.issues.length > 0 && (
+						<ul className="mt-1 list-disc pl-4 text-[11px] text-white/50">
+							{v.issues.map((iss, k) => (
+								<li key={k}>
+									{iss.type} ({iss.severity}) — {iss.detail}
+								</li>
+							))}
+						</ul>
 					)}
 					<div className="mt-2 flex gap-3 text-xs">
 						<button type="button" onClick={() => setOpen((o) => !o)} className="text-white/50 hover:text-white">
@@ -136,10 +124,6 @@ function ItemCard({
 export default function Home() {
 	const [items, setItems] = useState<Item[]>([]);
 	const [metrics, setMetrics] = useState<Metrics | null>(null);
-	const [busy, setBusy] = useState(false);
-	const [result, setResult] = useState<{ item: Item; verdict: Verdict } | null>(null);
-	const [errorMsg, setErrorMsg] = useState<string | null>(null);
-	const [showJson, setShowJson] = useState(false);
 
 	const refresh = useCallback(async () => {
 		const [i, m] = await Promise.all([
@@ -156,28 +140,6 @@ export default function Home() {
 		return () => clearInterval(t);
 	}, [refresh]);
 
-	const intake = async (variant: Variant) => {
-		setBusy(true);
-		setErrorMsg(null);
-		try {
-			const res = await fetch("/api/intake", {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify(variant === "random" ? {} : { variant }),
-			});
-			const d = await res.json();
-			if (d.item) {
-				setResult(d);
-				setShowJson(false);
-			} else {
-				setErrorMsg(d.error ?? "intake failed");
-			}
-			await refresh();
-		} finally {
-			setBusy(false);
-		}
-	};
-
 	const override = async (id: string) => {
 		await fetch(`/api/items/${id}/override`, { method: "POST" });
 		await refresh();
@@ -192,21 +154,22 @@ export default function Home() {
 				<h1 className="text-2xl font-semibold">Alt Vault — intake spine</h1>
 				<p className="mt-1 text-sm text-white/50">
 					A working demo of a physical-asset vault pipeline: a collectible arrives, gets
-					photographed, and either goes live for sale or gets held for a bad scan. The whole
-					thing is driven by one number — time from received to live.
+					photographed, and either goes live for sale or is held for a bad scan. Driven by one
+					number — time from received to live.
 				</p>
 			</header>
 
 			<section className="mb-6 rounded-xl border border-sky-500/20 bg-sky-500/[0.04] p-4 text-sm text-white/70">
-				<div className="mb-1 font-semibold text-sky-300/90">Try it in 10 seconds</div>
-				Hit a <span className="text-white/90">Simulate intake</span> button below. It renders a
-				card scan and runs it through <span className="text-white/90">ScanGate</span> — a Claude
-				vision check against the item&rsquo;s manifest. A clean scan passes QC and moves to{" "}
-				<span className="text-emerald-400">Live inventory</span>; a scan with glare, blur, skew, or
-				a wrong label fails and lands in the{" "}
-				<span className="text-rose-400">Exception queue</span> instead of reaching a customer.
-				Click <span className="text-white/90">chain of custody</span> on any item to see its event
-				log. The metrics up top recompute from that log in real time.
+				<div className="mb-1 font-semibold text-sky-300/90">This inventory is real</div>
+				Every card below is an actual image — real phone photos of Magic: The Gathering cards,
+				plus two catalog scans — run through <span className="text-white/90">Claude vision
+				(claude-sonnet-5)</span>, which compares each image to its manifest and writes the verdict
+				you see. <span className="text-emerald-400">Green</span> passed QC and went live;{" "}
+				<span className="text-rose-400">red</span> was held. Claude fails a blurry scan it can&rsquo;t
+				verify and a card whose label doesn&rsquo;t match its record, and passes
+				marginal-but-legible ones — its own call, shown per card. Click{" "}
+				<span className="text-white/90">chain of custody</span> for the event log, or{" "}
+				<span className="text-amber-300">override → live</span> to release a held item.
 			</section>
 
 			{metrics && (
@@ -220,92 +183,18 @@ export default function Home() {
 				</section>
 			)}
 
-			<section className="mb-6 rounded-xl border border-white/10 bg-white/[0.02] p-4">
-				<div className="mb-2 text-xs uppercase tracking-wide text-white/40">Simulate intake — runs a scan through ScanGate live</div>
-				<div className="flex flex-wrap gap-2">
-					{VARIANTS.map((v) => (
-						<button
-							key={v}
-							type="button"
-							disabled={busy}
-							onClick={() => intake(v)}
-							className="rounded-lg border border-white/15 bg-white/[0.03] px-3 py-1.5 text-sm capitalize hover:bg-white/10 disabled:opacity-40"
-						>
-							{v}
-						</button>
-					))}
-				</div>
-				{busy && (
-					<div className="mt-3 text-sm text-sky-300/80">
-						Rendering a fresh scan → running it through ScanGate…
-					</div>
-				)}
-				{errorMsg && <div className="mt-3 text-sm text-rose-400">{errorMsg}</div>}
-				{result && !busy && (
-					<div className="mt-4 rounded-lg border border-white/10 bg-black/30 p-3">
-						<div className="mb-2 text-xs uppercase tracking-wide text-white/40">
-							Last intake — a new row was just written to Postgres and re-read below
-						</div>
-						<div className="flex gap-3">
-							{/* eslint-disable-next-line @next/next/no-img-element */}
-							<img
-								src={`/api/items/${result.item.id}/scan-image`}
-								alt="generated scan"
-								className="h-32 w-24 shrink-0 rounded-md border border-white/10 object-cover"
-							/>
-							<div className="min-w-0 flex-1 text-sm">
-								<div className="font-mono text-xs text-white/50">
-									{result.item.sku} · id …{result.item.id.slice(-6)} ·{" "}
-									{new Date(result.item.receivedAt).toLocaleTimeString()}
-								</div>
-								<div className="mt-1 font-medium">{result.item.title}</div>
-								<div className={`mt-1 ${result.verdict.pass ? "text-emerald-400" : "text-rose-400"}`}>
-									ScanGate {result.verdict.pass ? "PASSED" : "FAILED"} ({Math.round(result.verdict.confidence * 100)}% conf) — {result.verdict.summary} →{" "}
-									<span className="uppercase">{result.item.state}</span>
-								</div>
-								{result.verdict.issues.length > 0 && (
-									<ul className="mt-1 list-disc pl-5 text-xs text-white/60">
-										{result.verdict.issues.map((iss, k) => (
-											<li key={k}>
-												{iss.type} ({iss.severity}) — {iss.detail}
-											</li>
-										))}
-									</ul>
-								)}
-								<button
-									type="button"
-									onClick={() => setShowJson((s) => !s)}
-									className="mt-2 text-xs text-white/50 hover:text-white"
-								>
-									{showJson ? "hide" : "show"} raw ScanGate output (JSON)
-								</button>
-							</div>
-						</div>
-						{showJson && (
-							<pre className="mt-2 overflow-x-auto rounded border border-white/10 bg-black/50 p-2 text-[11px] leading-relaxed text-white/70">
-								{JSON.stringify(result.verdict, null, 2)}
-							</pre>
-						)}
-						<div className="mt-2 text-xs text-white/40">
-							The <span className="text-sky-300">new</span>-tagged card below is this item. Click intake
-							again — you get a different SKU/id every time; nothing here is hardcoded.
-						</div>
-					</div>
-				)}
-			</section>
-
 			<div className="grid gap-6 lg:grid-cols-2">
 				<section>
 					<h2 className="mb-3 text-sm font-semibold text-emerald-400/90">Live inventory · {live.length}</h2>
 					<div className="space-y-2">
-						{live.map((i) => <ItemCard key={i.id} item={i} onOverride={override} highlight={i.id === result?.item.id} />)}
+						{live.map((i) => <ItemCard key={i.id} item={i} onOverride={override} />)}
 						{!live.length && <div className="text-sm text-white/30">nothing live yet</div>}
 					</div>
 				</section>
 				<section>
 					<h2 className="mb-3 text-sm font-semibold text-rose-400/90">Exception queue · {exceptions.length}</h2>
 					<div className="space-y-2">
-						{exceptions.map((i) => <ItemCard key={i.id} item={i} onOverride={override} highlight={i.id === result?.item.id} />)}
+						{exceptions.map((i) => <ItemCard key={i.id} item={i} onOverride={override} />)}
 						{!exceptions.length && <div className="text-sm text-white/30">queue clear</div>}
 					</div>
 				</section>
@@ -321,17 +210,17 @@ export default function Home() {
 					<code className="text-white/70">vault_stats</code>.
 				</p>
 				<pre className="overflow-x-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs leading-relaxed text-white/70">
-{`> where_is_item("Bennett")
-  Bennett Crowe (TC-0009) is held in the QC exception queue (not live).
-  Last ScanGate verdict: FAIL — Card is rotated and off-center in the frame.
+{`> where_is_item("MTG-0003")
+  Crystal Rod (MTG-0003) is held in the QC exception queue (not live).
+  Last ScanGate verdict: FAIL — too blurry to reliably confirm details.
 
-> item_history("TC-0005")
-  received → scanned → ScanGate FAILED — label_mismatch`}
+> item_history("MTG-0009")
+  received → scanned → ScanGate FAILED — label_mismatch (photo is Crystal Rod, record says Shivan Dragon)`}
 				</pre>
 			</section>
 
 			<footer className="mt-8 border-t border-white/10 pt-4 text-xs text-white/40">
-				Portfolio demo for Alt's Vault founding-engineer role · full source, incl. the
+				Portfolio demo for Alt&rsquo;s Vault founding-engineer role · full source, incl. the
 				ScanGate gate and VaultTrace MCP server, at{" "}
 				<a
 					href="https://github.com/ahonnecke/alt.vault"
