@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { Item, VaultEvent } from "@/lib/domain";
+import type { Item, VaultEvent, Verdict } from "@/lib/domain";
 
 type Metrics = {
 	total: number;
@@ -67,11 +67,21 @@ function Timeline({ id }: { id: string }) {
 	);
 }
 
-function ItemCard({ item, onOverride }: { item: Item; onOverride: (id: string) => void }) {
+function ItemCard({
+	item,
+	onOverride,
+	highlight,
+}: {
+	item: Item;
+	onOverride: (id: string) => void;
+	highlight?: boolean;
+}) {
 	const [open, setOpen] = useState(false);
 	const v = item.lastVerdict;
 	return (
-		<div className="rounded-xl border border-white/10 bg-white/[0.02]">
+		<div
+			className={`rounded-xl border bg-white/[0.02] transition ${highlight ? "border-sky-400/70 ring-2 ring-sky-400/40" : "border-white/10"}`}
+		>
 			<div className="flex gap-3 p-3">
 				{item.scanPath && (
 					// eslint-disable-next-line @next/next/no-img-element
@@ -87,11 +97,19 @@ function ItemCard({ item, onOverride }: { item: Item; onOverride: (id: string) =
 						<span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase ${STATE_STYLE[item.state]}`}>
 							{item.state}
 						</span>
+						{highlight && (
+							<span className="rounded-full border border-sky-400/50 bg-sky-400/10 px-2 py-0.5 text-[10px] uppercase text-sky-300">
+								new
+							</span>
+						)}
 					</div>
 					<div className="truncate font-medium">{item.title}</div>
 					<div className="text-xs text-white/40">
 						{item.manifest.set} · #{item.manifest.cardNumber} · {item.manifest.year}
 						{item.manifest.grade ? ` · ${item.manifest.grade}` : ""}
+					</div>
+					<div className="font-mono text-[10px] text-white/25">
+						id …{item.id.slice(-6)} · received {new Date(item.receivedAt).toLocaleTimeString()}
 					</div>
 					{v && (
 						<div className={`mt-1 text-xs ${v.pass ? "text-emerald-400/80" : "text-rose-400/90"}`}>
@@ -119,7 +137,9 @@ export default function Home() {
 	const [items, setItems] = useState<Item[]>([]);
 	const [metrics, setMetrics] = useState<Metrics | null>(null);
 	const [busy, setBusy] = useState(false);
-	const [flash, setFlash] = useState<string | null>(null);
+	const [result, setResult] = useState<{ item: Item; verdict: Verdict } | null>(null);
+	const [errorMsg, setErrorMsg] = useState<string | null>(null);
+	const [showJson, setShowJson] = useState(false);
 
 	const refresh = useCallback(async () => {
 		const [i, m] = await Promise.all([
@@ -138,7 +158,7 @@ export default function Home() {
 
 	const intake = async (variant: Variant) => {
 		setBusy(true);
-		setFlash(null);
+		setErrorMsg(null);
 		try {
 			const res = await fetch("/api/intake", {
 				method: "POST",
@@ -146,8 +166,12 @@ export default function Home() {
 				body: JSON.stringify(variant === "random" ? {} : { variant }),
 			});
 			const d = await res.json();
-			if (d.verdict) setFlash(`${d.item.sku}: ScanGate ${d.verdict.pass ? "PASSED → live" : "FAILED → exception"} — ${d.verdict.summary}`);
-			else setFlash(d.error ?? "intake failed");
+			if (d.item) {
+				setResult(d);
+				setShowJson(false);
+			} else {
+				setErrorMsg(d.error ?? "intake failed");
+			}
 			await refresh();
 		} finally {
 			setBusy(false);
@@ -211,21 +235,77 @@ export default function Home() {
 						</button>
 					))}
 				</div>
-				{flash && <div className="mt-3 text-sm text-white/70">{flash}</div>}
+				{busy && (
+					<div className="mt-3 text-sm text-sky-300/80">
+						Rendering a fresh scan → running it through ScanGate…
+					</div>
+				)}
+				{errorMsg && <div className="mt-3 text-sm text-rose-400">{errorMsg}</div>}
+				{result && !busy && (
+					<div className="mt-4 rounded-lg border border-white/10 bg-black/30 p-3">
+						<div className="mb-2 text-xs uppercase tracking-wide text-white/40">
+							Last intake — a new row was just written to Postgres and re-read below
+						</div>
+						<div className="flex gap-3">
+							{/* eslint-disable-next-line @next/next/no-img-element */}
+							<img
+								src={`/api/items/${result.item.id}/scan-image`}
+								alt="generated scan"
+								className="h-32 w-24 shrink-0 rounded-md border border-white/10 object-cover"
+							/>
+							<div className="min-w-0 flex-1 text-sm">
+								<div className="font-mono text-xs text-white/50">
+									{result.item.sku} · id …{result.item.id.slice(-6)} ·{" "}
+									{new Date(result.item.receivedAt).toLocaleTimeString()}
+								</div>
+								<div className="mt-1 font-medium">{result.item.title}</div>
+								<div className={`mt-1 ${result.verdict.pass ? "text-emerald-400" : "text-rose-400"}`}>
+									ScanGate {result.verdict.pass ? "PASSED" : "FAILED"} ({Math.round(result.verdict.confidence * 100)}% conf) — {result.verdict.summary} →{" "}
+									<span className="uppercase">{result.item.state}</span>
+								</div>
+								{result.verdict.issues.length > 0 && (
+									<ul className="mt-1 list-disc pl-5 text-xs text-white/60">
+										{result.verdict.issues.map((iss, k) => (
+											<li key={k}>
+												{iss.type} ({iss.severity}) — {iss.detail}
+											</li>
+										))}
+									</ul>
+								)}
+								<button
+									type="button"
+									onClick={() => setShowJson((s) => !s)}
+									className="mt-2 text-xs text-white/50 hover:text-white"
+								>
+									{showJson ? "hide" : "show"} raw ScanGate output (JSON)
+								</button>
+							</div>
+						</div>
+						{showJson && (
+							<pre className="mt-2 overflow-x-auto rounded border border-white/10 bg-black/50 p-2 text-[11px] leading-relaxed text-white/70">
+								{JSON.stringify(result.verdict, null, 2)}
+							</pre>
+						)}
+						<div className="mt-2 text-xs text-white/40">
+							The <span className="text-sky-300">new</span>-tagged card below is this item. Click intake
+							again — you get a different SKU/id every time; nothing here is hardcoded.
+						</div>
+					</div>
+				)}
 			</section>
 
 			<div className="grid gap-6 lg:grid-cols-2">
 				<section>
 					<h2 className="mb-3 text-sm font-semibold text-emerald-400/90">Live inventory · {live.length}</h2>
 					<div className="space-y-2">
-						{live.map((i) => <ItemCard key={i.id} item={i} onOverride={override} />)}
+						{live.map((i) => <ItemCard key={i.id} item={i} onOverride={override} highlight={i.id === result?.item.id} />)}
 						{!live.length && <div className="text-sm text-white/30">nothing live yet</div>}
 					</div>
 				</section>
 				<section>
 					<h2 className="mb-3 text-sm font-semibold text-rose-400/90">Exception queue · {exceptions.length}</h2>
 					<div className="space-y-2">
-						{exceptions.map((i) => <ItemCard key={i.id} item={i} onOverride={override} />)}
+						{exceptions.map((i) => <ItemCard key={i.id} item={i} onOverride={override} highlight={i.id === result?.item.id} />)}
 						{!exceptions.length && <div className="text-sm text-white/30">queue clear</div>}
 					</div>
 				</section>
